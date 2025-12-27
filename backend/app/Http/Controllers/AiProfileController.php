@@ -28,7 +28,7 @@ class AiProfileController extends Controller
         $profile = AiProfile::create([
             'user_id' => Auth::id(),
             'display_name' => $validated['display_name'],
-            'avatar_url' => $validated['avatar_url'],
+            'avatar_url' => $validated['avatar_url'] ?? null,
             'base_personality_json' => $validated['base_personality_json'],
             'base_system_prompt' => $validated['base_system_prompt'],
         ]);
@@ -59,11 +59,21 @@ class AiProfileController extends Controller
             'display_name' => 'sometimes|string|max:255',
             'avatar_url' => 'sometimes|nullable|string',
             'base_personality_json' => 'sometimes|array',
+            'base_system_prompt' => 'sometimes|string',
         ]);
 
         $aiProfile->update($validated);
 
-        return $aiProfile;
+        if (isset($validated['base_system_prompt'])) {
+            $version = AiProfilePromptVersion::create([
+                'ai_profile_id' => $aiProfile->id,
+                'system_prompt' => $validated['base_system_prompt'],
+                'tuning_summary' => 'Manual update by user',
+            ]);
+            $aiProfile->update(['active_prompt_version_id' => $version->id]);
+        }
+
+        return $aiProfile->load('activePromptVersion');
     }
 
     public function destroy(AiProfile $aiProfile)
