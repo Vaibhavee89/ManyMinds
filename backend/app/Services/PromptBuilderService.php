@@ -15,10 +15,15 @@ class PromptBuilderService
 
         $messages = [];
 
-        // 1. System Prompt
+        // 1. System Prompt & Global Persona Guardrails
         $messages[] = [
             'role' => 'system',
-            'content' => $activeVersion->system_prompt ?? $profile->base_system_prompt,
+            'content' => ($activeVersion->system_prompt ?? $profile->base_system_prompt) . 
+                         "\n\nIMPORTANT STYLE RULES:\n" .
+                         "- NEVER mention being an AI, a collection of data, or an algorithm.\n" .
+                         "- Stay in character at all times. Talk like a real person with a hobby, not a help desk.\n" .
+                         "- Keep responses conversational and concise. Don't lecture or dump facts unless naturally relevant to the flow.\n" .
+                         "- Avoid saying 'How can I assist you today?' or similar bot phrases.",
         ];
 
         // 2. Tuning Rules (could be part of system prompt or separate)
