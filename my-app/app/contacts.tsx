@@ -1,15 +1,17 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
-    FlatList,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { chatService } from "../services/ChatService";
 
 type Contact = {
   id: string;
@@ -59,29 +61,58 @@ function sectionKey(name: string) {
 export default function Contacts() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      try {
+        const data = await chatService.getAiProfiles();
+        const formatted = data.map((p: any) => ({
+          id: String(p.id),
+          name: p.display_name || "Unknown AI",
+          status: p.bio || "Available",
+          online: true,
+        }));
+        setContacts(formatted);
+      } catch (error) {
+        console.error("Failed to fetch AI profiles:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfiles();
+  }, []);
 
   const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase();
     const filtered = !q
-      ? CONTACTS
-      : CONTACTS.filter((c) => {
-          return (
-            c.name.toLowerCase().includes(q) || c.status.toLowerCase().includes(q)
-          );
-        });
+      ? contacts
+      : contacts.filter((c) => {
+        return (
+          c.name.toLowerCase().includes(q) || c.status.toLowerCase().includes(q)
+        );
+      });
 
     const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 
     const out: Row[] = [
       {
         type: "action",
-        id: "a1",
+        id: "action-new-companion",
+        title: "New AI Companion",
+        icon: "robot-plus",
+      },
+      {
+        type: "action",
+        id: "action-new-group",
         title: "New Group",
         icon: "account-multiple-plus",
       },
       {
         type: "action",
-        id: "a2",
+        id: "action-invite",
         title: "Invite Friends",
         icon: "share-variant",
       },
@@ -98,7 +129,7 @@ export default function Contacts() {
     }
 
     return out;
-  }, [query]);
+  }, [query, contacts]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -108,7 +139,7 @@ export default function Contacts() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => router.push("/create-ai")}
             hitSlop={10}
             style={styles.addButton}
           >
@@ -137,79 +168,95 @@ export default function Contacts() {
           />
         </View>
 
-        <FlatList
-          data={rows}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item }) => {
-            if (item.type === "action") {
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#1D6DFF" />
+          </View>
+        ) : (
+          <FlatList
+            data={rows}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            renderItem={({ item }) => {
+              if (item.type === "action") {
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      if (item.id === "action-new-companion") {
+                        router.push("/create-ai");
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.actionRow,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <View style={styles.actionIconWrap}>
+                      <MaterialCommunityIcons
+                        name={item.icon as never}
+                        size={20}
+                        color="#1D6DFF"
+                      />
+                    </View>
+                    <Text style={styles.actionTitle}>{item.title}</Text>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={22}
+                      color="rgba(255,255,255,0.35)"
+                    />
+                  </Pressable>
+                );
+              }
+
+              if (item.type === "section") {
+                return (
+                  <View style={styles.sectionRow}>
+                    <Text style={styles.sectionText}>{item.title}</Text>
+                  </View>
+                );
+              }
+
+              const c = item.contact;
               return (
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => {}}
+                  onPress={async () => {
+                    try {
+                      // Find or create conversation for this AI Profile
+                      const conversation = await chatService.findOrCreateConversation(c.id);
+                      router.push({
+                        pathname: "/chat/[id]",
+                        params: { id: conversation.id, name: c.name },
+                      });
+                    } catch (error) {
+                      console.error("Failed to navigate to chat:", error);
+                    }
+                  }}
                   style={({ pressed }) => [
-                    styles.actionRow,
+                    styles.contactRow,
                     pressed && styles.rowPressed,
                   ]}
                 >
-                  <View style={styles.actionIconWrap}>
-                    <MaterialCommunityIcons
-                      name={item.icon as never}
-                      size={20}
-                      color="#1D6DFF"
-                    />
+                  <View style={styles.avatarWrap}>
+                    <Text style={styles.avatarText}>{initials(c.name)}</Text>
+                    {c.online ? <View style={styles.onlineDot} /> : null}
                   </View>
-                  <Text style={styles.actionTitle}>{item.title}</Text>
-                  <MaterialCommunityIcons
-                    name="chevron-right"
-                    size={22}
-                    color="rgba(255,255,255,0.35)"
-                  />
+
+                  <View style={styles.contactBody}>
+                    <Text style={styles.contactName} numberOfLines={1}>
+                      {c.name}
+                    </Text>
+                    <Text style={styles.contactStatus} numberOfLines={1}>
+                      {c.status}
+                    </Text>
+                  </View>
                 </Pressable>
               );
-            }
-
-            if (item.type === "section") {
-              return (
-                <View style={styles.sectionRow}>
-                  <Text style={styles.sectionText}>{item.title}</Text>
-                </View>
-              );
-            }
-
-            const c = item.contact;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  router.push({
-                    pathname: "/chat/[id]",
-                    params: { id: c.id, name: c.name },
-                  });
-                }}
-                style={({ pressed }) => [
-                  styles.contactRow,
-                  pressed && styles.rowPressed,
-                ]}
-              >
-                <View style={styles.avatarWrap}>
-                  <Text style={styles.avatarText}>{initials(c.name)}</Text>
-                  {c.online ? <View style={styles.onlineDot} /> : null}
-                </View>
-
-                <View style={styles.contactBody}>
-                  <Text style={styles.contactName} numberOfLines={1}>
-                    {c.name}
-                  </Text>
-                  <Text style={styles.contactStatus} numberOfLines={1}>
-                    {c.status}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
+            }}
+          />
+        )}
 
         <View style={styles.bottomBar}>
           <Pressable
@@ -227,7 +274,7 @@ export default function Contacts() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => { }}
             style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
           >
             <MaterialCommunityIcons name="account" size={22} color="#1D6DFF" />
@@ -236,7 +283,7 @@ export default function Contacts() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => router.replace("/profile" as never)}
             style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
           >
             <MaterialCommunityIcons
@@ -261,6 +308,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#061220",
     paddingHorizontal: 18,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerRow: {
     flexDirection: "row",
