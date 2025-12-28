@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { chatService } from "../services/ChatService";
 
 type ChatItem = {
   id: string;
@@ -71,17 +73,42 @@ function initials(name: string) {
 export default function Chats() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [conversations, setConversations] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        const data = await chatService.getConversations();
+        const formatted = data.map((c: any) => ({
+          id: String(c.id),
+          name: c.ai_profile?.display_name || "AI Assistant",
+          lastMessage: c.last_message?.body || "Start a conversation...",
+          time: c.last_message_at ? new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "",
+          unreadCount: 0,
+          online: true,
+        }));
+        setConversations(formatted);
+      } catch (error) {
+        console.error("Failed to fetch conversations:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchConversations();
+  }, []);
 
   const data = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return CHATS;
-    return CHATS.filter((c) => {
+    if (!q) return conversations;
+    return conversations.filter((c) => {
       return (
         c.name.toLowerCase().includes(q) ||
         c.lastMessage.toLowerCase().includes(q)
       );
     });
-  }, [query]);
+  }, [query, conversations]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -104,7 +131,7 @@ export default function Chats() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => { }}
             hitSlop={10}
             style={styles.iconButton}
           >
@@ -133,62 +160,70 @@ export default function Chats() {
           />
         </View>
 
-        <FlatList
-          data={data}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item }) => {
-            return (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() =>
-                  router.push({
-                    pathname: "/chat/[id]",
-                    params: { id: item.id, name: item.name },
-                  })
-                }
-                style={({ pressed }) => [
-                  styles.row,
-                  pressed && styles.rowPressed,
-                ]}
-              >
-                <View style={styles.avatarWrap}>
-                  <Text style={styles.avatarText}>{initials(item.name)}</Text>
-                  {item.online ? <View style={styles.onlineDot} /> : null}
-                </View>
-
-                <View style={styles.rowBody}>
-                  <View style={styles.rowTopLine}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.time}>{item.time}</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#1D6DFF" />
+          </View>
+        ) : (
+          <FlatList
+            data={data}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            renderItem={({ item }) => {
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/chat/[id]",
+                      params: { id: item.id, name: item.name },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.row,
+                    pressed && styles.rowPressed,
+                  ]}
+                >
+                  <View style={styles.avatarWrap}>
+                    <Text style={styles.avatarText}>{initials(item.name)}</Text>
+                    {item.online ? <View style={styles.onlineDot} /> : null}
                   </View>
 
-                  <View style={styles.rowBottomLine}>
-                    <Text style={styles.lastMessage} numberOfLines={1}>
-                      {item.lastMessage}
-                    </Text>
-                    {item.unreadCount > 0 ? (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadText}>
-                          {item.unreadCount}
-                        </Text>
-                      </View>
-                    ) : (
-                      <MaterialCommunityIcons
-                        name="check"
-                        size={18}
-                        color="rgba(255,255,255,0.35)"
-                      />
-                    )}
+                  <View style={styles.rowBody}>
+                    <View style={styles.rowTopLine}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.time}>{item.time}</Text>
+                    </View>
+
+                    <View style={styles.rowBottomLine}>
+                      <Text style={styles.lastMessage} numberOfLines={1}>
+                        {item.lastMessage}
+                      </Text>
+                      {item.unreadCount > 0 ? (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadText}>
+                            {item.unreadCount}
+                          </Text>
+                        </View>
+                      ) : (
+                        item.time ? (
+                          <MaterialCommunityIcons
+                            name="check"
+                            size={18}
+                            color="rgba(255,255,255,0.35)"
+                          />
+                        ) : null
+                      )}
+                    </View>
                   </View>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
+                </Pressable>
+              );
+            }}
+          />
+        )}
 
         <Pressable
           accessibilityRole="button"
@@ -199,6 +234,47 @@ export default function Chats() {
         >
           <MaterialCommunityIcons name="pencil" size={22} color="#FFFFFF" />
         </Pressable>
+
+        <View style={styles.bottomBar}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => { }}
+            style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+          >
+            <MaterialCommunityIcons
+              name="message-text"
+              size={22}
+              color="#1D6DFF"
+            />
+            <Text style={[styles.tabText, styles.tabTextActive]}>Chats</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/contacts" as never)}
+            style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+          >
+            <MaterialCommunityIcons
+              name="account"
+              size={22}
+              color="rgba(255,255,255,0.55)"
+            />
+            <Text style={styles.tabText}>Contacts</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/profile" as never)}
+            style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+          >
+            <MaterialCommunityIcons
+              name="account-outline"
+              size={22}
+              color="rgba(255,255,255,0.55)"
+            />
+            <Text style={styles.tabText}>Profile</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -213,6 +289,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#061220",
     paddingHorizontal: 18,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   topBar: {
     flexDirection: "row",
@@ -363,6 +444,39 @@ const styles = StyleSheet.create({
   },
   fabPressed: {
     opacity: 0.92,
+    transform: [{ scale: 0.99 }],
+  },
+  bottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 14,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(6,18,32,0.96)",
+  },
+  tab: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 84,
+  },
+  tabText: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  tabTextActive: {
+    color: "#1D6DFF",
+  },
+  tabPressed: {
+    opacity: 0.9,
     transform: [{ scale: 0.99 }],
   },
 });
