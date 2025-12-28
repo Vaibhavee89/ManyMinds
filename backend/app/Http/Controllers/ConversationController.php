@@ -34,11 +34,22 @@ class ConversationController extends Controller
             abort(403);
         }
 
-        return Conversation::create([
-            'user_id' => Auth::id(),
-            'ai_profile_id' => $validated['ai_profile_id'],
-            'title' => $validated['title'] ?? 'New Chat with ' . $profile->display_name,
-        ]);
+        return Conversation::firstOrCreate(
+            [
+                'user_id' => Auth::id(),
+                'ai_profile_id' => $validated['ai_profile_id'],
+            ],
+            [
+                'title' => $validated['title'] ?? 'Chat with ' . $profile->display_name,
+                'last_message_at' => now(),
+            ]
+        );
+    }
+
+    public function show(Conversation $conversation)
+    {
+        $this->authorize('view', $conversation);
+        return $conversation->load('aiProfile');
     }
 
     public function messages(Conversation $conversation)
@@ -47,6 +58,6 @@ class ConversationController extends Controller
         
         return $conversation->messages()
             ->orderBy('created_at', 'asc')
-            ->paginate(50);
+            ->get();
     }
 }
