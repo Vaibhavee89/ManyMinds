@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { authService } from "../services/AuthService";
 
 type SettingRow = {
   id: string;
@@ -53,6 +54,52 @@ const SETTINGS: SettingRow[] = [
 
 export default function Profile() {
   const router = useRouter();
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const userData = await authService.getUser();
+      setUser(userData);
+    };
+    fetchUser();
+  }, []);
+
+  const handleLogout = async () => {
+    Alert.alert(
+      "Log Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await authService.logout();
+              router.replace("/login");
+            } catch (error) {
+              Alert.alert("Error", "Logout failed. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePress = (id: string) => {
+    if (id === "logout") {
+      handleLogout();
+    } else {
+      // Handle other settings
+    }
+  };
+
+  const name = user?.name || "User";
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -61,11 +108,11 @@ export default function Profile() {
 
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
-            <Text style={styles.avatarText}>VM</Text>
+            <Text style={styles.avatarText}>{initials || "U"}</Text>
           </View>
 
           <View style={styles.profileText}>
-            <Text style={styles.name}>Vaibhavee</Text>
+            <Text style={styles.name}>{name}</Text>
             <Text style={styles.status} numberOfLines={1}>
               Available
             </Text>
@@ -73,7 +120,7 @@ export default function Profile() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => { }}
             hitSlop={10}
             style={styles.editButton}
           >
@@ -91,7 +138,7 @@ export default function Profile() {
               <Pressable
                 key={s.id}
                 accessibilityRole="button"
-                onPress={() => {}}
+                onPress={() => handlePress(s.id)}
                 style={({ pressed }) => [
                   styles.settingRow,
                   pressed && styles.rowPressed,
@@ -157,7 +204,7 @@ export default function Profile() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => { }}
             style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
           >
             <MaterialCommunityIcons name="account-outline" size={22} color="#1D6DFF" />
