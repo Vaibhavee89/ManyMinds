@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,6 +21,7 @@ type Message = {
   text: string;
   createdAt: number;
   fromMe: boolean;
+  imageUrl?: string;
 };
 
 function makeId() {
@@ -55,12 +57,27 @@ export default function ChatScreen() {
 
         setAiProfileId(String(convData.ai_profile_id));
 
-        const formatted = msgData.map((m: any) => ({
-          id: String(m.id),
-          text: m.body,
-          createdAt: new Date(m.created_at).getTime(),
-          fromMe: m.sender_type === "user",
-        }));
+        const formatted = msgData
+          .filter((m: any) => m.sender_type !== "tool") // Filter out raw tool results
+          .map((m: any) => {
+            let metadata = m.metadata_json;
+            if (typeof metadata === "string") {
+              try {
+                metadata = JSON.parse(metadata);
+              } catch (e) {
+                metadata = {};
+              }
+            }
+
+            return {
+              id: String(m.id),
+              text: m.body || "",
+              createdAt: new Date(m.created_at).getTime(),
+              fromMe: m.sender_type === "user",
+              imageUrl: metadata?.image_url,
+            };
+          })
+          .filter((m: any) => m.text.trim().length > 0 || m.imageUrl); // Filter out empty placeholder assistant msgs
         setMessages(formatted.reverse());
       } catch (error) {
         console.error("Failed to fetch chat data:", error);
@@ -104,6 +121,13 @@ export default function ChatScreen() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId ? { ...m, text: m.text + chunk } : m
+            )
+          );
+        },
+        onImage: (url) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, imageUrl: url } : m
             )
           );
         },
@@ -218,7 +242,21 @@ export default function ChatScreen() {
                       isMe ? styles.bubbleMe : styles.bubbleThem,
                     ]}
                   >
-                    <Text style={styles.bubbleText}>{item.text || "..."}</Text>
+                    {item.imageUrl && (
+                      <View style={styles.imageContainer}>
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={styles.renderedImage}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      </View>
+                    )}
+                    {item.text ? (
+                      <Text style={styles.bubbleText}>{item.text}</Text>
+                    ) : !item.imageUrl ? (
+                      <Text style={styles.bubbleText}>...</Text>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -424,5 +462,16 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
+  },
+  imageContainer: {
+    width: 240,
+    height: 180,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  renderedImage: {
+    width: "100%",
+    height: "100%",
   },
 });

@@ -4,6 +4,7 @@ import { authService } from "./AuthService";
 
 export interface StreamCallbacks {
     onChunk: (text: string) => void;
+    onImage: (url: string) => void;
     onComplete: () => void;
     onError: (error: any) => void;
 }
@@ -52,6 +53,9 @@ class ChatService {
 
             try {
                 const data = JSON.parse(event.data || "{}");
+                if (data.image_url) {
+                    callbacks.onImage(data.image_url);
+                }
                 if (data.text) {
                     callbacks.onChunk(data.text);
                 }
