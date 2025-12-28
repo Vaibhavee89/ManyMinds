@@ -191,7 +191,12 @@ export default function ChatScreen() {
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => { }}
+              onPress={() => {
+                router.push({
+                  pathname: "/voice-call/[id]",
+                  params: { id: params.id as string, name: chatName }
+                });
+              }}
               hitSlop={10}
               style={styles.actionButton}
             >

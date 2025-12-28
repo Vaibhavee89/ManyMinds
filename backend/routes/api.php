@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\RealtimeController;
 use App\Http\Controllers\AiProfileController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConversationController;
@@ -27,4 +28,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Feedback
     Route::post('/messages/{message}/feedback', [\App\Http\Controllers\FeedbackController::class, 'store']);
+    Route::post('/conversations/{conversation}/realtime-session', [RealtimeController::class, 'createSession']);
 });

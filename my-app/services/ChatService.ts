@@ -177,6 +177,22 @@ class ChatService {
         if (!response.ok) throw new Error("Failed to create conversation");
         return response.json();
     }
+
+    async getRealtimeSession(conversationId: string) {
+        const token = await authService.getToken();
+        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/realtime-session`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error("Failed to get realtime session");
+        }
+
+        return response.json();
+    }
 }
 
 export const chatService = new ChatService();
