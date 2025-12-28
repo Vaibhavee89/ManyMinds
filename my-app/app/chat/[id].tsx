@@ -1,17 +1,19 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { chatService } from "../../services/ChatService";
 
 type Message = {
   id: string;
@@ -35,43 +37,92 @@ export default function ChatScreen() {
   }, [params.name]);
 
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "m1",
-      text: "Hey! Welcome 👋",
-      createdAt: Date.now() - 1000 * 60 * 30,
-      fromMe: false,
-    },
-    {
-      id: "m2",
-      text: "This is a demo chat screen UI.",
-      createdAt: Date.now() - 1000 * 60 * 28,
-      fromMe: false,
-    },
-    {
-      id: "m3",
-      text: "Looks great — let’s build real-time next!",
-      createdAt: Date.now() - 1000 * 60 * 25,
-      fromMe: true,
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [aiProfileId, setAiProfileId] = useState<string | null>(null);
 
   const listRef = useRef<FlatList<Message>>(null);
 
-  const send = useCallback(() => {
-    const text = input.trim();
-    if (!text) return;
+  useEffect(() => {
+    if (!params.id) return;
 
-    const msg: Message = {
-      id: makeId(),
+    const fetchAll = async () => {
+      try {
+        const [convData, msgData] = await Promise.all([
+          chatService.getConversation(params.id!),
+          chatService.getMessages(params.id!)
+        ]);
+
+        setAiProfileId(String(convData.ai_profile_id));
+
+        const formatted = msgData.map((m: any) => ({
+          id: String(m.id),
+          text: m.body,
+          createdAt: new Date(m.created_at).getTime(),
+          fromMe: m.sender_type === "user",
+        }));
+        setMessages(formatted.reverse());
+      } catch (error) {
+        console.error("Failed to fetch chat data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAll();
+  }, [params.id]);
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text || !params.id) return;
+
+    const userMsgId = makeId();
+    const userMsg: Message = {
+      id: userMsgId,
       text,
       createdAt: Date.now(),
       fromMe: true,
     };
 
-    setMessages((prev) => [msg, ...prev]);
+    setMessages((prev) => [userMsg, ...prev]);
     setInput("");
-  }, [input]);
+
+    // Setup Assistant Placeholder
+    const assistantMsgId = makeId();
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      text: "",
+      createdAt: Date.now(),
+      fromMe: false,
+    };
+
+    setMessages((prev) => [assistantMsg, ...prev]);
+
+    try {
+      await chatService.sendMessageStream(params.id, text, {
+        onChunk: (chunk) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, text: m.text + chunk } : m
+            )
+          );
+        },
+        onComplete: () => {
+          console.log("Stream complete");
+        },
+        onError: (err) => {
+          console.error("Stream error:", err);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, text: m.text + "\n[System: Error receiving response]" } : m
+            )
+          );
+        }
+      });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    }
+  }, [input, params.id]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -94,19 +145,29 @@ export default function ChatScreen() {
             />
           </Pressable>
 
-          <View style={styles.titleBlock}>
+          <Pressable
+            style={styles.titleBlock}
+            onPress={() => {
+              if (aiProfileId) {
+                router.push({
+                  pathname: "/edit-personality/[id]",
+                  params: { id: aiProfileId }
+                });
+              }
+            }}
+          >
             <Text style={styles.title} numberOfLines={1}>
               {chatName}
             </Text>
             <Text style={styles.subtitle} numberOfLines={1}>
-              Online
+              {aiProfileId ? "Edit Personality" : "Online"}
             </Text>
-          </View>
+          </Pressable>
 
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => {}}
+              onPress={() => { }}
               hitSlop={10}
               style={styles.actionButton}
             >
@@ -118,7 +179,7 @@ export default function ChatScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={() => {}}
+              onPress={() => { }}
               hitSlop={10}
               style={styles.actionButton}
             >
@@ -131,38 +192,44 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          inverted
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const isMe = item.fromMe;
-            return (
-              <View
-                style={[
-                  styles.bubbleRow,
-                  isMe ? styles.bubbleRowMe : styles.bubbleRowThem,
-                ]}
-              >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#1D6DFF" />
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            inverted
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => {
+              const isMe = item.fromMe;
+              return (
                 <View
                   style={[
-                    styles.bubble,
-                    isMe ? styles.bubbleMe : styles.bubbleThem,
+                    styles.bubbleRow,
+                    isMe ? styles.bubbleRowMe : styles.bubbleRowThem,
                   ]}
                 >
-                  <Text style={styles.bubbleText}>{item.text}</Text>
+                  <View
+                    style={[
+                      styles.bubble,
+                      isMe ? styles.bubbleMe : styles.bubbleThem,
+                    ]}
+                  >
+                    <Text style={styles.bubbleText}>{item.text || "..."}</Text>
+                  </View>
                 </View>
-              </View>
-            );
-          }}
-        />
+              );
+            }}
+          />
+        )}
 
         <View style={styles.composer}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => {}}
+            onPress={() => { }}
             hitSlop={10}
             style={styles.composerIconButton}
           >
@@ -210,6 +277,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#061220",
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   topBar: {
     flexDirection: "row",
