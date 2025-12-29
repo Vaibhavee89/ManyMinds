@@ -10,7 +10,9 @@ import {
     Text,
     View,
 } from "react-native";
+import { Audio } from "expo-av";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { RTCView, MediaStream } from "react-native-webrtc";
 import { realtimeVoiceService } from "../../services/RealtimeVoiceService";
 
 export default function VoiceCallScreen() {
@@ -19,8 +21,10 @@ export default function VoiceCallScreen() {
 
     const [status, setStatus] = useState("Connecting...");
     const [isMuted, setIsMuted] = useState(false);
+    const [isSpeaker, setIsSpeaker] = useState(true);
     const [duration, setDuration] = useState(0);
     const [connected, setConnected] = useState(false);
+    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -29,8 +33,20 @@ export default function VoiceCallScreen() {
 
         const connect = async () => {
             try {
-                await realtimeVoiceService.startCall(id!, (track) => {
-                    console.log("Remote audio track received");
+                // Configure Audio for Voice Call
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: true,
+                    shouldDuckAndroid: true,
+                    playThroughEarpieceAndroid: false, // Default to speaker
+                });
+
+                await realtimeVoiceService.startCall(id!, (stream) => {
+                    // ... rest of connect
+
+                    console.log("Remote stream received");
+                    setRemoteStream(stream);
                     setStatus("Connected");
                     setConnected(true);
                 });
@@ -73,6 +89,24 @@ export default function VoiceCallScreen() {
         router.back();
     };
 
+    const toggleMute = () => {
+        const newMuteState = !isMuted;
+        setIsMuted(newMuteState);
+        realtimeVoiceService.toggleAudio(!newMuteState);
+    };
+
+    const toggleSpeaker = async () => {
+        const newSpeakerState = !isSpeaker;
+        setIsSpeaker(newSpeakerState);
+        await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: !newSpeakerState,
+        });
+    };
+
     const formatDuration = (s: number) => {
         const mins = Math.floor(s / 60);
         const secs = s % 60;
@@ -85,6 +119,15 @@ export default function VoiceCallScreen() {
                 colors={["#0B1B33", "#061220", "#02070D"]}
                 style={StyleSheet.absoluteFill}
             />
+
+            {remoteStream && (
+                <RTCView
+                    streamURL={remoteStream.toURL()}
+                    style={{ width: 1, height: 1, opacity: 0 }}
+                    mirror={false}
+                    objectFit="cover"
+                />
+            )}
 
             <SafeAreaView style={styles.safeArea}>
                 <View style={styles.header}>
@@ -103,7 +146,7 @@ export default function VoiceCallScreen() {
                 <View style={styles.controls}>
                     <Pressable
                         style={[styles.circleButton, isMuted && styles.activeButton]}
-                        onPress={() => setIsMuted(!isMuted)}
+                        onPress={toggleMute}
                     >
                         <MaterialCommunityIcons
                             name={isMuted ? "microphone-off" : "microphone"}
@@ -117,8 +160,15 @@ export default function VoiceCallScreen() {
                         <MaterialCommunityIcons name="phone-hangup" size={32} color="#FFFFFF" />
                     </Pressable>
 
-                    <Pressable style={styles.circleButton}>
-                        <MaterialCommunityIcons name="volume-high" size={28} color="#FFFFFF" />
+                    <Pressable
+                        style={[styles.circleButton, isSpeaker && styles.activeButton]}
+                        onPress={toggleSpeaker}
+                    >
+                        <MaterialCommunityIcons
+                            name={isSpeaker ? "volume-high" : "phone-in-talk"}
+                            size={28}
+                            color="#FFFFFF"
+                        />
                         <Text style={styles.buttonLabel}>Speaker</Text>
                     </Pressable>
                 </View>

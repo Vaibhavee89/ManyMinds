@@ -33,6 +33,9 @@ class RealtimeService
                 'modalities' => ['audio', 'text'],
                 'instructions' => $instructions,
                 'voice' => 'sage', // sage, coral, ash, ballad, ocean, verse
+                'turn_detection' => [
+                    'type' => 'server_vad',
+                ],
             ]);
 
             if ($response->successful()) {
