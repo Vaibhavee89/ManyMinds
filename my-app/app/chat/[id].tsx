@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -150,76 +151,79 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <View style={styles.topBar}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.back()}
+          hitSlop={10}
+          style={styles.iconButton}
+        >
+          <MaterialCommunityIcons
+            name="arrow-left"
+            size={22}
+            color="rgba(255,255,255,0.92)"
+          />
+        </Pressable>
+
+        <Pressable
+          style={styles.titleBlock}
+          onPress={() => {
+            if (aiProfileId) {
+              router.push({
+                pathname: "/edit-personality/[id]",
+                params: { id: aiProfileId }
+              });
+            }
+          }}
+        >
+          <Text style={styles.title} numberOfLines={1}>
+            {chatName}
+          </Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {aiProfileId ? "Edit Personality" : "Online"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            console.log("TEST: Phone button clicked!");
+            Alert.alert("Debug", "Voice call icon pressed!");
+            router.push(`/voice-call/${params.id}?name=${encodeURIComponent(chatName)}`);
+          }}
+          hitSlop={30}
+          style={({ pressed }) => [
+            styles.actionButton,
+            { backgroundColor: "#1D6DFF" }, // Visible blue background
+            pressed && styles.buttonPressed
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="phone"
+            size={22}
+            color="#FFFFFF"
+          />
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => { }}
+          hitSlop={10}
+          style={styles.actionButton}
+        >
+          <MaterialCommunityIcons
+            name="video-outline"
+            size={22}
+            color="rgba(255,255,255,0.92)"
+          />
+        </Pressable>
+      </View>
+
       <KeyboardAvoidingView
         style={styles.screen}
         behavior={Platform.select({ ios: "padding", android: undefined })}
         keyboardVerticalOffset={Platform.OS === "ios" ? 4 : 0}
       >
-        <View style={styles.topBar}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.back()}
-            hitSlop={10}
-            style={styles.iconButton}
-          >
-            <MaterialCommunityIcons
-              name="arrow-left"
-              size={22}
-              color="rgba(255,255,255,0.92)"
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.titleBlock}
-            onPress={() => {
-              if (aiProfileId) {
-                router.push({
-                  pathname: "/edit-personality/[id]",
-                  params: { id: aiProfileId }
-                });
-              }
-            }}
-          >
-            <Text style={styles.title} numberOfLines={1}>
-              {chatName}
-            </Text>
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {aiProfileId ? "Edit Personality" : "Online"}
-            </Text>
-          </Pressable>
-
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                router.push({
-                  pathname: "/voice-call/[id]",
-                  params: { id: params.id as string, name: chatName }
-                });
-              }}
-              hitSlop={10}
-              style={styles.actionButton}
-            >
-              <MaterialCommunityIcons
-                name="phone-outline"
-                size={20}
-                color="rgba(255,255,255,0.92)"
-              />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => { }}
-              hitSlop={10}
-              style={styles.actionButton}
-            >
-              <MaterialCommunityIcons
-                name="video-outline"
-                size={22}
-                color="rgba(255,255,255,0.92)"
-              />
-            </Pressable>
-          </View>
-        </View>
 
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -334,21 +338,25 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.07)",
+    borderBottomColor: "rgba(255,255,255,0.2)",
+    zIndex: 100,
+    elevation: 100,
+    backgroundColor: "#0B1B33", // Solid color to ensure it's on top
   },
   iconButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
   titleBlock: {
     flex: 1,
     paddingHorizontal: 12,
+    // backgroundColor: 'rgba(0,255,0,0.1)', // Green tint for debug
   },
   title: {
     color: "rgba(255,255,255,0.95)",
@@ -364,14 +372,15 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     gap: 8,
+    // backgroundColor: 'rgba(255,0,0,0.1)', // Red tint for debug
   },
   actionButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    width: 44, // Slightly larger hit area
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
