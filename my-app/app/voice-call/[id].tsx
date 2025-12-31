@@ -1,19 +1,19 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
     Animated,
     Pressable,
+    ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from "react-native";
-import { Audio } from "expo-av";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RTCView, MediaStream } from "react-native-webrtc";
-import { realtimeVoiceService } from "../../services/RealtimeVoiceService";
+import { MediaStream, RTCView } from "react-native-webrtc";
+import { realtimeVoiceService, TranscriptEntry } from "../../services/RealtimeVoiceService";
 
 export default function VoiceCallScreen() {
     const router = useRouter();
@@ -25,8 +25,11 @@ export default function VoiceCallScreen() {
     const [duration, setDuration] = useState(0);
     const [connected, setConnected] = useState(false);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+    const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+    const [showTranscript, setShowTranscript] = useState(false);
 
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const scrollViewRef = useRef<ScrollView>(null);
 
     useEffect(() => {
         let interval: any;
@@ -42,13 +45,25 @@ export default function VoiceCallScreen() {
                     playThroughEarpieceAndroid: false, // Default to speaker
                 });
 
-                await realtimeVoiceService.startCall(id!, (stream) => {
-                    // ... rest of connect
-
-                    console.log("Remote stream received");
-                    setRemoteStream(stream);
-                    setStatus("Connected");
-                    setConnected(true);
+                await realtimeVoiceService.startCall(id!, {
+                    onRemoteStream: (stream) => {
+                        console.log("Remote stream received");
+                        setRemoteStream(stream);
+                        setStatus("Connected");
+                        setConnected(true);
+                    },
+                    onUserTranscript: (text) => {
+                        setTranscript(prev => [...prev, { role: "user", text, timestamp: new Date() }]);
+                        scrollViewRef.current?.scrollToEnd({ animated: true });
+                    },
+                    onAssistantTranscript: (text) => {
+                        setTranscript(prev => [...prev, { role: "assistant", text, timestamp: new Date() }]);
+                        scrollViewRef.current?.scrollToEnd({ animated: true });
+                    },
+                    onError: (error) => {
+                        console.error("Voice call error:", error);
+                        setStatus("Error occurred");
+                    }
                 });
 
                 interval = setInterval(() => {
@@ -135,13 +150,44 @@ export default function VoiceCallScreen() {
                     <Text style={styles.statusText}>{connected ? formatDuration(duration) : status}</Text>
                 </View>
 
-                <View style={styles.avatarContainer}>
-                    <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }], opacity: 0.3 }]} />
-                    <Animated.View style={[styles.pulseRing, { transform: [{ scale: Animated.multiply(pulseAnim, 0.8) }], opacity: 0.5 }]} />
-                    <View style={styles.avatarWrapper}>
-                        <MaterialCommunityIcons name="account-voice" size={80} color="#FFFFFF" />
+                {showTranscript ? (
+                    <View style={styles.transcriptContainer}>
+                        <ScrollView 
+                            ref={scrollViewRef}
+                            style={styles.transcriptScroll}
+                            contentContainerStyle={styles.transcriptContent}
+                        >
+                            {transcript.length === 0 ? (
+                                <Text style={styles.transcriptPlaceholder}>
+                                    Conversation transcript will appear here...
+                                </Text>
+                            ) : (
+                                transcript.map((entry, index) => (
+                                    <View 
+                                        key={index} 
+                                        style={[
+                                            styles.transcriptBubble,
+                                            entry.role === "user" ? styles.userBubble : styles.assistantBubble
+                                        ]}
+                                    >
+                                        <Text style={styles.transcriptRole}>
+                                            {entry.role === "user" ? "You" : name || "AI"}
+                                        </Text>
+                                        <Text style={styles.transcriptText}>{entry.text}</Text>
+                                    </View>
+                                ))
+                            )}
+                        </ScrollView>
                     </View>
-                </View>
+                ) : (
+                    <View style={styles.avatarContainer}>
+                        <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }], opacity: 0.3 }]} />
+                        <Animated.View style={[styles.pulseRing, { transform: [{ scale: Animated.multiply(pulseAnim, 0.8) }], opacity: 0.5 }]} />
+                        <View style={styles.avatarWrapper}>
+                            <MaterialCommunityIcons name="account-voice" size={80} color="#FFFFFF" />
+                        </View>
+                    </View>
+                )}
 
                 <View style={styles.controls}>
                     <Pressable
@@ -170,6 +216,18 @@ export default function VoiceCallScreen() {
                             color="#FFFFFF"
                         />
                         <Text style={styles.buttonLabel}>Speaker</Text>
+                    </Pressable>
+
+                    <Pressable
+                        style={[styles.circleButton, showTranscript && styles.activeButton]}
+                        onPress={() => setShowTranscript(!showTranscript)}
+                    >
+                        <MaterialCommunityIcons
+                            name="text-box-outline"
+                            size={28}
+                            color="#FFFFFF"
+                        />
+                        <Text style={styles.buttonLabel}>Transcript</Text>
                     </Pressable>
                 </View>
             </SafeAreaView>
@@ -264,5 +322,50 @@ const styles = StyleSheet.create({
         color: "#FFFFFF",
         fontSize: 12,
         fontWeight: "600",
-    }
+    },
+    transcriptContainer: {
+        flex: 1,
+        marginVertical: 20,
+        backgroundColor: "rgba(255,255,255,0.05)",
+        borderRadius: 16,
+        overflow: "hidden",
+    },
+    transcriptScroll: {
+        flex: 1,
+    },
+    transcriptContent: {
+        padding: 16,
+        gap: 12,
+    },
+    transcriptPlaceholder: {
+        color: "rgba(255,255,255,0.4)",
+        textAlign: "center",
+        marginTop: 40,
+        fontSize: 14,
+    },
+    transcriptBubble: {
+        padding: 12,
+        borderRadius: 12,
+        maxWidth: "85%",
+    },
+    userBubble: {
+        backgroundColor: "#1D6DFF",
+        alignSelf: "flex-end",
+    },
+    assistantBubble: {
+        backgroundColor: "rgba(255,255,255,0.1)",
+        alignSelf: "flex-start",
+    },
+    transcriptRole: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.6)",
+        marginBottom: 4,
+        textTransform: "uppercase",
+    },
+    transcriptText: {
+        color: "#FFFFFF",
+        fontSize: 14,
+        lineHeight: 20,
+    },
 });

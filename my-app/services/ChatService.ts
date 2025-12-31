@@ -193,6 +193,35 @@ class ChatService {
 
         return response.json();
     }
+
+    async saveVoiceTranscript(
+        conversationId: string,
+        role: "user" | "assistant",
+        text: string
+    ) {
+        const token = await authService.getToken();
+        const response = await fetch(
+            `${API_BASE_URL}/conversations/${conversationId}/voice-transcript`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    role,
+                    text,
+                    source: "voice_call",
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error("Failed to save voice transcript");
+        }
+
+        return response.json();
+    }
 }
 
 export const chatService = new ChatService();

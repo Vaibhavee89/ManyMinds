@@ -1,13 +1,41 @@
-import { RTCPeerConnection, RTCSessionDescription, mediaDevices, MediaStream } from "react-native-webrtc";
+import { mediaDevices, MediaStream, RTCPeerConnection, RTCSessionDescription } from "react-native-webrtc";
 import { chatService } from "./ChatService";
+
+export interface TranscriptEntry {
+    role: "user" | "assistant";
+    text: string;
+    timestamp: Date;
+}
+
+export interface VoiceCallbacks {
+    onRemoteStream: (stream: MediaStream) => void;
+    onUserTranscript?: (text: string) => void;
+    onAssistantTranscript?: (text: string) => void;
+    onError?: (error: any) => void;
+}
 
 class RealtimeVoiceService {
     private pc: RTCPeerConnection | null = null;
     private localStream: MediaStream | null = null;
     private dc: any = null;
     private remoteStream: MediaStream | null = null;
+    private conversationId: string | null = null;
+    private transcript: TranscriptEntry[] = [];
+    private currentAssistantText: string = "";
+    private callbacks: VoiceCallbacks | null = null;
 
-    async startCall(conversationId: string, onRemoteStream: (stream: MediaStream) => void) {
+    async startCall(conversationId: string, callbacks: VoiceCallbacks | ((stream: MediaStream) => void)) {
+        // Support both old and new callback signatures
+        if (typeof callbacks === "function") {
+            this.callbacks = { onRemoteStream: callbacks };
+        } else {
+            this.callbacks = callbacks;
+        }
+        
+        this.conversationId = conversationId;
+        this.transcript = [];
+        this.currentAssistantText = "";
+        
         try {
             // 1. Get ephemeral token from backend
             const session = await chatService.getRealtimeSession(conversationId);
@@ -38,7 +66,7 @@ class RealtimeVoiceService {
                 const track = e.track;
                 if (track.kind === "audio") {
                     this.remoteStream?.addTrack(track);
-                    onRemoteStream(this.remoteStream!);
+                    this.callbacks?.onRemoteStream(this.remoteStream!);
                 }
             });
 
@@ -50,7 +78,7 @@ class RealtimeVoiceService {
             console.log("Microphone acquired, tracks:", this.localStream.getTracks().length);
 
             this.localStream.getTracks().forEach((track: any) => {
-                console.log("Adding local track:", track.kind, track.enabled);
+                console.log("Adding local track:", track.kind, track.enabled, track.readyState);
                 this.pc?.addTrack(track, this.localStream!);
             });
 
@@ -83,12 +111,7 @@ class RealtimeVoiceService {
             this.dc.onmessage = (e: any) => {
                 try {
                     const event = JSON.parse(e.data);
-                    console.log("Realtime Event RX:", event.type);
-                    if (event.type === 'response.audio.delta') {
-                        // too noisy to log full content, just knowing it arrived is enough
-                    } else if (event.type === 'error') {
-                        console.error("Realtime Error Event:", event);
-                    }
+                    this.handleRealtimeEvent(event);
                 } catch (err) {
                     console.error("Failed to parse data channel message", err);
                 }
@@ -129,7 +152,91 @@ class RealtimeVoiceService {
         }
     }
 
-    stopCall() {
+    private handleRealtimeEvent(event: any) {
+        const type = event.type;
+        
+        // Log non-noisy events
+        if (type !== "response.audio.delta") {
+            console.log("Realtime Event RX:", type);
+        }
+        
+        switch (type) {
+            case "conversation.item.input_audio_transcription.completed":
+                // User's speech was transcribed
+                const userText = event.transcript?.trim();
+                if (userText) {
+                    console.log("User said:", userText);
+                    this.transcript.push({
+                        role: "user",
+                        text: userText,
+                        timestamp: new Date()
+                    });
+                    this.callbacks?.onUserTranscript?.(userText);
+                    // Save to backend
+                    this.saveTranscriptEntry("user", userText);
+                }
+                break;
+                
+            case "response.audio_transcript.delta":
+                // Assistant is speaking - accumulate text
+                if (event.delta) {
+                    this.currentAssistantText += event.delta;
+                }
+                break;
+                
+            case "response.audio_transcript.done":
+                // Assistant finished speaking this segment
+                const assistantText = event.transcript?.trim() || this.currentAssistantText.trim();
+                if (assistantText) {
+                    console.log("Assistant said:", assistantText);
+                    this.transcript.push({
+                        role: "assistant",
+                        text: assistantText,
+                        timestamp: new Date()
+                    });
+                    this.callbacks?.onAssistantTranscript?.(assistantText);
+                    // Save to backend
+                    this.saveTranscriptEntry("assistant", assistantText);
+                }
+                this.currentAssistantText = "";
+                break;
+                
+            case "response.done":
+                // Response complete - conversation can continue
+                console.log("Response complete, ready for next input");
+                break;
+                
+            case "input_audio_buffer.speech_started":
+                console.log("User started speaking");
+                break;
+                
+            case "input_audio_buffer.speech_stopped":
+                console.log("User stopped speaking");
+                break;
+                
+            case "error":
+                console.error("Realtime Error Event:", event);
+                this.callbacks?.onError?.(event.error);
+                break;
+        }
+    }
+    
+    private async saveTranscriptEntry(role: "user" | "assistant", text: string) {
+        if (!this.conversationId) return;
+        
+        try {
+            await chatService.saveVoiceTranscript(this.conversationId, role, text);
+        } catch (err) {
+            console.error("Failed to save transcript:", err);
+        }
+    }
+
+    async stopCall() {
+        // Save full transcript before closing
+        if (this.conversationId && this.transcript.length > 0) {
+            console.log("Call ended. Total transcript entries:", this.transcript.length);
+        }
+        
         if (this.pc) {
             this.pc.close();
             this.pc = null;
@@ -146,6 +253,13 @@ class RealtimeVoiceService {
             this.dc.close();
             this.dc = null;
         }
+        
+        this.conversationId = null;
+        this.callbacks = null;
+    }
+    
+    getTranscript(): TranscriptEntry[] {
+        return [...this.transcript];
     }
 
     sendText(text: string) {
@@ -168,6 +282,10 @@ class RealtimeVoiceService {
                 track.enabled = enabled;
             });
         }
+    }
+    
+    isConnected(): boolean {
+        return this.dc?.readyState === "open";
     }
 }
 
