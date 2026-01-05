@@ -29,4 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Feedback
     Route::post('/messages/{message}/feedback', [\App\Http\Controllers\FeedbackController::class, 'store']);
     Route::post('/conversations/{conversation}/realtime-session', [RealtimeController::class, 'createSession']);
+
+    // Voice call transcript
+    Route::post('/conversations/{conversation}/voice-transcript', [\App\Http\Controllers\ChatController::class, 'storeVoiceTranscript']);
 });

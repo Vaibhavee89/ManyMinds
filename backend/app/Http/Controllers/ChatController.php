@@ -164,4 +164,40 @@ class ChatController extends Controller
             'X-Accel-Buffering' => 'no',
         ]);
     }
+
+    /**
+     * Store a voice call transcript entry.
+     * Called by the mobile app during/after voice calls to persist the conversation.
+     */
+    public function storeVoiceTranscript(Request $request, Conversation $conversation)
+    {
+        $this->authorize('view', $conversation);
+
+        $validated = $request->validate([
+            'role' => 'required|in:user,assistant',
+            'text' => 'required|string',
+            'source' => 'nullable|string',
+        ]);
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'sender_type' => $validated['role'],
+            'body' => $validated['text'],
+            'metadata_json' => [
+                'source' => $validated['source'] ?? 'voice_call',
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
+
+        // Update conversation's last_message_at
+        $conversation->update(['last_message_at' => now()]);
+
+        return response()->json([
+            'id' => $message->id,
+            'conversation_id' => $message->conversation_id,
+            'sender_type' => $message->sender_type,
+            'body' => $message->body,
+            'created_at' => $message->created_at,
+        ]);
+    }
 }
