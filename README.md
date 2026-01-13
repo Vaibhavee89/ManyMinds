@@ -1,8 +1,8 @@
-# LibreChat React Native & Laravel Backend
+# ManyMinds React Native & Laravel Backend
 
 ## 📖 Project Overview
 
-LibreChat is a **real‑time AI‑powered chat application** built with a **React Native** front‑end and a **Laravel** back‑end.  It showcases:
+ManyMinds is a **real‑time AI‑powered chat application** built with a **React Native** front‑end and a **Laravel** back‑end.  It showcases:
 - **AI chat** powered by OpenAI's GPT‑4o‑realtime model.
 - **Live voice streaming** using WebRTC (React Native WebRTC) for two‑way audio communication.
 - **Authentication** via Laravel Sanctum.
